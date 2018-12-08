@@ -1,12 +1,33 @@
-#include <err.h>
 #include <stdio.h>
-#include <sys/socket.h>
-#include <netinet/in.h>
-#include <arpa/inet.h>
 #include <string.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <unistd.h>
+
+#ifdef WIN32
+#include <ws2tcpip.h>
+#include <errno.h>
+#include <stdarg.h>
+static void err(int status, const char *format, ...)
+{
+    va_list ap;
+    va_start(ap, format);
+
+    int err = errno;
+    fprintf(stderr, "mdns_query: ");
+    vfprintf(stderr, format, ap);
+    fprintf(stderr, ": %s\n", strerror(err));
+    exit(status);
+
+    va_end(ap);
+}
+#else
+#include <err.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+#endif
+
 
 static const uint8_t query[] = {
     0, 0, 0, 0, 0, 1,
@@ -14,6 +35,7 @@ static const uint8_t query[] = {
     0x68, 0x2d, 0x30, 0x30, 0x30, 0x30, 0x05,
     0x6c, 0x6f, 0x63, 0x61, 0x6c, 0, 0, 0x01, 0, 0x01
 };
+
 
 int main()
 {
@@ -23,7 +45,8 @@ int main()
     memset(&destaddr, 0, sizeof(destaddr));
     destaddr.sin_family = AF_INET;
     destaddr.sin_port = htons(5353);
-    inet_aton("224.0.0.251", &destaddr.sin_addr);
+     inet_aton("224.0.0.251", &destaddr.sin_addr);
+//destaddr.sin_addr.s_addr = htonl(0xe00000fb); // 224.0.0.251
 
     struct sockaddr_in ouraddr;
     memset(&ouraddr, 0, sizeof(ouraddr));
@@ -31,11 +54,18 @@ int main()
     ouraddr.sin_port = htons(5353);
     ouraddr.sin_addr.s_addr = htonl(INADDR_ANY);
 
-    int enable = 1;
-    if (setsockopt(s, SOL_SOCKET, SO_REUSEADDR, &enable, sizeof(int)) < 0)
+#ifdef WIN32
+    BOOL enable = TRUE;
+    if (setsockopt(s, SOL_SOCKET, SO_REUSEADDR, (char*) &enable, sizeof(enable)) == SOCKET_ERROR)
         err(EXIT_FAILURE, "setsockopt(SO_REUSEADDR)");
-    if (setsockopt(s, SOL_SOCKET, SO_REUSEPORT, &enable, sizeof(int)) < 0)
+
+#else
+    int enable = 1;
+    if (setsockopt(s, SOL_SOCKET, SO_REUSEADDR, &enable, sizeof(enable)) < 0)
+        err(EXIT_FAILURE, "setsockopt(SO_REUSEADDR)");
+    if (setsockopt(s, SOL_SOCKET, SO_REUSEPORT, &enable, sizeof(enable)) < 0)
         err(EXIT_FAILURE, "setsockopt(SO_REUSEPORT)");
+#endif
     if (bind(s, (struct sockaddr *) &ouraddr, sizeof(ouraddr)) < 0)
         err(EXIT_FAILURE, "bind");
 
@@ -52,13 +82,10 @@ int main()
             err(EXIT_FAILURE, "recvfrom");
 
         if (buffer[2] == 0x84 && buffer[13] == 's' && buffer[14] == 'r' && buffer[15] == 'h') {
-            char addrstr[64];
             struct sockaddr_in *respaddr4 = (struct sockaddr_in *) &respaddr;
-            inet_ntop(AF_INET, &respaddr4->sin_addr, addrstr, sizeof(addrstr));
-            fprintf(stderr, "%s\n", addrstr);
+            printf("%s\n", inet_ntoa(respaddr4->sin_addr));
 
-            inet_ntop(AF_INET, &buffer[38], addrstr, sizeof(addrstr));
-            fprintf(stderr, "%s\n", addrstr);
+            printf("%d.%d.%d.%d\n", buffer[38], buffer[39], buffer[40], buffer[41]);
             break;
         }
     }
