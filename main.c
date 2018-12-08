@@ -48,12 +48,12 @@ int main()
         socklen_t len;
         uint8_t buffer[1024];
         memset(buffer, 0, sizeof(buffer));
-        if (recvfrom(s, buffer, sizeof(buffer), 0, &respaddr, &len) < 0)
+        if (recvfrom(s, buffer, sizeof(buffer), 0, (struct sockaddr *) &respaddr, &len) < 0)
             err(EXIT_FAILURE, "recvfrom");
 
         if (buffer[2] == 0x84 && buffer[13] == 's' && buffer[14] == 'r' && buffer[15] == 'h') {
             char addrstr[64];
-            struct sockaddr_in *respaddr4 = &respaddr;
+            struct sockaddr_in *respaddr4 = (struct sockaddr_in *) &respaddr;
             inet_ntop(AF_INET, &respaddr4->sin_addr, addrstr, sizeof(addrstr));
             fprintf(stderr, "%s\n", addrstr);
 
